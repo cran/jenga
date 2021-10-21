@@ -1,0 +1,13 @@
+9127e954e51afe29639221d47ffa922f *DESCRIPTION
+bfe5a0bb2f1ecbf29c69218c580d25ad *NAMESPACE
+8550639a645445c97749576c21447dd2 *NEWS.md
+ccb8029371efd0332b10646c9ccce43f *R/data.R
+58db94d597007a8e501a20df3d3bcfeb *R/engine.R
+8975b5d61f76756afc559f3ddd8c774e *R/hood.R
+3d91fbc28b1ea9d4983a1f1b06483e67 *R/jenga.R
+0c2906676931c99b9e62127a6a8d3776 *R/main.R
+955d6818897b1cff9157a48a2a751fa4 *data/covid_in_europe.rda
+40fac20b5db18b14fd43847ac45904b8 *man/covid_in_europe.Rd
+8b2bcdb43f5d3fa73f3b060a9820b318 *man/engine.Rd
+ebe84928511c57f1c1888571195f20e3 *man/hood.Rd
+2711d0f633ebb7e951487133201eecd8 *man/jenga.Rd
