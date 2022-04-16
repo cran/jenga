@@ -4,28 +4,45 @@
 \alias{hood}
 \title{support functions for jenga}
 \usage{
-hood(ts, seq_len, k, method, kernel, ci, deriv, n_windows, mode, dates)
+hood(
+  ts,
+  seq_len,
+  k,
+  method,
+  kernel,
+  ci,
+  deriv,
+  n_windows,
+  mode,
+  dates,
+  error_scale,
+  error_benchmark
+)
 }
 \arguments{
-\item{ts}{A data frame with time features on columns}
+\item{ts}{A data frame.}
 
-\item{seq_len}{Positive integer. Time-step number of the projected sequence}
+\item{seq_len}{Positive integer.}
 
-\item{k}{Positive integer. Number of neighbors to consider when applying kernel average. Min number is 3.}
+\item{k}{Positive integer.}
 
-\item{method}{Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "chebyshev", "sorensen", "gower", "soergel", "kulczynski_d", "canberra", "lorentzian", "intersection", "non-intersection", "wavehedges", "czekanowski", "motyka", "kulczynski_s", "tanimoto", "ruzicka", "inner_product", "harmonic_mean", "cosine", "hassebrook", "jaccard", "dice",  "fidelity",  "bhattacharyya", "squared_chord", "squared_euclidean", "pearson", "neyman", "squared_chi", "prob_symm", "divergence", "clark", "additive_symm", "taneja", "kumar-johnson", "avg".}
+\item{method}{Positive integer.}
 
-\item{kernel}{String. DIstribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "logis", "unif", "t", "exp", "lnorm".}
+\item{kernel}{String.}
 
 \item{ci}{Confidence interval.}
 
-\item{deriv}{Integer vector. Number of differentiation operations to perform for each original time feature. 0 = no change; 1: one diff; 2: two diff.}
+\item{deriv}{Integer vector.}
 
-\item{n_windows}{Positive integer. Number of validation tests to measure/sample error.}
+\item{n_windows}{Positive integer.}
 
-\item{mode}{String. Sequencing method: deterministic ("segmented"), or non-deterministic ("sampled").}
+\item{mode}{String.}
 
-\item{dates}{Date. Vector with dates for time features.}
+\item{dates}{Date.}
+
+\item{error_scale}{String.}
+
+\item{error_benchmark}{String.}
 }
 \description{
 support functions for jenga

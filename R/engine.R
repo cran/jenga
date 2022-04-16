@@ -12,38 +12,46 @@
 #' @import philentropy
 #' @import abind
 #' @import ggplot2
+#' @import greybox
 
-#' @param ts A data frame with time features on columns
-#' @param seq_len Positive integer. Time-step number of the projected sequence
-#' @param k Positive integer. Number of neighbors to consider when applying kernel average. Min number is 3.
-#' @param method Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "chebyshev", "sorensen", "gower", "soergel", "kulczynski_d", "canberra", "lorentzian", "intersection", "non-intersection", "wavehedges", "czekanowski", "motyka", "kulczynski_s", "tanimoto", "ruzicka", "inner_product", "harmonic_mean", "cosine", "hassebrook", "jaccard", "dice",  "fidelity",  "bhattacharyya", "squared_chord", "squared_euclidean", "pearson", "neyman", "squared_chi", "prob_symm", "divergence", "clark", "additive_symm", "taneja", "kumar-johnson", "avg".
-#' @param kernel String. DIstribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "logis", "unif", "t", "exp", "lnorm".
-#' @param error_measurement Logical. TRUE for measuring validation error. FALSE otherwise.
-#' @param deriv Integer vector. Number of differentiation operations to perform for each original time feature. 0 = no change; 1: one diff; 2: two diff.
-#' @param mode String. Sequencing method: deterministic ("segmented"), or non-deterministic ("sampled").
+#' @param ts A data frame.
+#' @param seq_len Positive integer.
+#' @param k Positive integer.
+#' @param method Positive integer.
+#' @param kernel String.
+#' @param error_measurement Logical.
+#' @param deriv Integer vector.
+#' @param mode String.
+#' @param error_scale String.
+#' @param error_benchmark String.
 
 
 ###
-engine <- function(ts, seq_len, k, method, kernel, error_measurement, deriv, mode)
+engine <- function(ts, seq_len, k, method, kernel, error_measurement, deriv, mode, error_scale, error_benchmark)
 {
 
-  eval_metrics <- function(actual, predicted)
+  my_metrics <- function(holdout, forecast, past, error_scale, error_benchmark)
   {
-    actual <- unlist(actual)
-    predicted <- unlist(predicted)
-    if(length(actual) != length(predicted)){stop("different lengths")}
+    scale <- switch(error_scale, "deviation" = sd(past), "naive" = mean(abs(diff(past))))
+    benchmark <- switch(error_benchmark, "average" = rep(mean(forecast), length(forecast)), "naive" = rep(tail(past, 1), length(forecast)))
 
-    rmse <- sqrt(mean((actual - predicted)^2))
-    mae <- mean(abs(actual - predicted))
-    mdae <- median(abs(actual - predicted))
-    mpe <- mean(((actual - predicted)/actual))
-    mape <- mean((abs(actual - predicted)/abs(actual))[is.finite(abs(actual - predicted)/abs(actual))])
-    smape <- mean(abs(actual - predicted)/mean(c(abs(actual), abs(predicted))))
-    rrse <- sqrt(sum((actual - predicted)^2))/sqrt(sum((actual - mean(actual))^2))
-    rae <- sum(abs(actual - predicted))/sum(abs(actual - mean(actual)))
+    me <- ME(holdout, forecast, na.rm = TRUE)
+    mae <- MAE(holdout, forecast, na.rm = TRUE)
+    mse <- MSE(holdout, forecast, na.rm = TRUE)
+    rmsse <- RMSSE(holdout, forecast, scale, na.rm = TRUE)
+    mre <- MRE(holdout, forecast, na.rm = TRUE)
+    mpe <- MPE(holdout, forecast, na.rm = TRUE)
+    mape <- MAPE(holdout, forecast, na.rm = TRUE)
+    rmae <- rMAE(holdout, forecast, benchmark, na.rm = TRUE)
+    rrmse <- rRMSE(holdout, forecast, benchmark, na.rm = TRUE)
+    rame <- rAME(holdout, forecast, benchmark, na.rm = TRUE)
+    mase <- MASE(holdout, forecast, scale, na.rm = TRUE)
+    smse <- sMSE(holdout, forecast, scale, na.rm = TRUE)
+    sce <- sCE(holdout, forecast, scale, na.rm = TRUE)
+    gmrae <- GMRAE(holdout, forecast, benchmark, na.rm = TRUE)
 
-    metrics <- round(c(rmse = rmse, mae = mae, mdae = mdae, mpe = mpe, mape = mape, smape = smape, rrse = rrse, rae = rae), 4)
-    return(metrics)
+    out <- round(c(me = me, mae = mae, mse = mse, rmsse = rmsse, mpe = mpe, mape = mape, rmae = rmae, rrmse = rrmse, rame = rame, mase = mase, smse = smse, sce = sce, gmrae = gmrae), 3)
+    return(out)
   }
 
   segmenter <- function(vector, seq_len)
@@ -121,6 +129,7 @@ engine <- function(ts, seq_len, k, method, kernel, error_measurement, deriv, mod
   if(error_measurement == TRUE)
   {
     actual <- tail(orig, seq_len)
+    past <- head(orig, - seq_len)
     sequenced_list <- map(sequenced_list, ~ .x[-n_seq,, drop = FALSE])
     n_seq <- n_seq - 1
     diff_model <- map2(orig, deriv, ~ recursive_diff(head(.x, -seq_len), .y))
@@ -141,12 +150,10 @@ engine <- function(ts, seq_len, k, method, kernel, error_measurement, deriv, mod
   {
     kfun <- switch(x,
                    "norm" = function(x) suppressWarnings(dnorm(x, mean(x), sd(x))),
-                   "lnorm" = function(x) suppressWarnings(dlnorm(x, mean(x), sd(x))),
                    "cauchy" = function(x) suppressWarnings(dcauchy(x, mean(x), sd(x))),
                    "logis" = function(x) suppressWarnings(dlogis(x, mean(x), sd(x))),
                    "unif" = function(x) suppressWarnings(dunif(x, min(x), max(x))),
                    "t" = function(x) suppressWarnings(dt(x, length(x) - 1)),
-                   "exp" = function(x) suppressWarnings(dexp(x, 1/sd(x)))
                     )
 
     return(kfun)
@@ -166,7 +173,7 @@ engine <- function(ts, seq_len, k, method, kernel, error_measurement, deriv, mod
   if(error_measurement == TRUE)
   {
     raw_error <- actual - prediction
-    test_metrics <- map2(actual, prediction, ~ eval_metrics(.x, .y))
+    test_metrics <- pmap(list(actual, prediction, past), ~ my_metrics(..1, ..2, ..3, error_scale, error_benchmark))
   }
 
   outcome <- list(prediction = prediction, actual = actual, raw_error = raw_error, test_metrics = test_metrics)

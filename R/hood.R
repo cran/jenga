@@ -5,24 +5,26 @@
 #' @importFrom narray split
 #' @importFrom modeest mlv1
 #' @importFrom moments skewness kurtosis
-#' @importFrom stats quantile sd
+#' @importFrom stats quantile sd ecdf
 #' @importFrom scales number
 #' @importFrom lubridate is.Date
 #' @import purrr
+#' @import entropy
 
-
-#' @param ts A data frame with time features on columns
-#' @param seq_len Positive integer. Time-step number of the projected sequence
-#' @param k Positive integer. Number of neighbors to consider when applying kernel average. Min number is 3.
-#' @param method Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "chebyshev", "sorensen", "gower", "soergel", "kulczynski_d", "canberra", "lorentzian", "intersection", "non-intersection", "wavehedges", "czekanowski", "motyka", "kulczynski_s", "tanimoto", "ruzicka", "inner_product", "harmonic_mean", "cosine", "hassebrook", "jaccard", "dice",  "fidelity",  "bhattacharyya", "squared_chord", "squared_euclidean", "pearson", "neyman", "squared_chi", "prob_symm", "divergence", "clark", "additive_symm", "taneja", "kumar-johnson", "avg".
-#' @param kernel String. DIstribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "logis", "unif", "t", "exp", "lnorm".
+#' @param ts A data frame.
+#' @param seq_len Positive integer.
+#' @param k Positive integer.
+#' @param method Positive integer.
+#' @param kernel String.
 #' @param ci Confidence interval.
-#' @param deriv Integer vector. Number of differentiation operations to perform for each original time feature. 0 = no change; 1: one diff; 2: two diff.
-#' @param n_windows Positive integer. Number of validation tests to measure/sample error.
-#' @param mode String. Sequencing method: deterministic ("segmented"), or non-deterministic ("sampled").
-#' @param dates Date. Vector with dates for time features.
+#' @param deriv Integer vector.
+#' @param n_windows Positive integer.
+#' @param mode String.
+#' @param dates Date.
+#' @param error_scale String.
+#' @param error_benchmark String.
 
-  hood <- function(ts, seq_len, k, method, kernel, ci, deriv, n_windows, mode, dates)
+  hood <- function(ts, seq_len, k, method, kernel, ci, deriv, n_windows, mode, dates, error_scale, error_benchmark)
   {
     ts_graph <- function(x_hist, y_hist, x_forcat, y_forcat, lower = NULL, upper = NULL, line_size = 1.3, label_size = 11,
                          forcat_band = "darkorange", forcat_line = "darkorange", hist_line = "gray43",
@@ -45,50 +47,72 @@
       return(plot)
     }
 
-    ###
-    sequential_kld <- function(m)
+    prediction_score <- function(integrated_preds, ground_truth)
     {
-      matrix <- t(as.matrix(m))
-      n <- nrow(matrix)
-      if(n == 1){return(NA)}
-      dens <- apply(matrix, 1, function(x) tryCatch(density(x[is.finite(x)], from = min(matrix[is.finite(matrix)]), to = max(matrix[is.finite(matrix)])), error = function(e) NA))
-      backward <- dens[-n]
-      forward <- dens[-1]
+      pfuns <- apply(integrated_preds, 2, ecdf)
+      pvalues <- purrr::map2_dbl(pfuns, ground_truth, ~ .x(.y))
+      scores <- mean(1 - 2 * abs(pvalues - 0.5))
+      return(scores)
+    }
 
-      finite_index <- map2_lgl(forward, backward, ~ is.finite(sum(.x$y * log(.x$y/.y$y))))
-      seq_kld <- pmap_dbl(list(forward[finite_index], backward[finite_index]), ~ sum(..1$y * log(..1$y/..2$y)[..3]))
-      avg_seq_kld <- tryCatch(round(mean(seq_kld, na.rm = TRUE), 3), error = function(e) NA)
+    doxa_filter <- function(orig, mat, n_class = NULL)
+    {
+      if(is.list(orig)){orig <- unlist(orig)}
+      if(!is.matrix(mat)){mat <- as.matrix(mat)}
+      discrete_check <- all(orig%%1 == 0)
+      all_positive_check <- all(orig >= 0)
+      all_negative_check <- all(orig <= 0)
+      monotonic_increase_check <- all(diff(orig) >= 0)
+      monotonic_decrease_check <- all(diff(orig) <= 0)
+      class_check <- FALSE
+      if(is.integer(n_class)){class_check <- length(unique(orig)) <= n_class}
 
-      ratios <- log(dens[[n]]$y/dens[[1]]$y)
-      finite_index <- is.finite(ratios)
+      monotonic_fixer <- function(x, mode)
+      {
+        model <- recursive_diff(x, 1)
+        vect <- model$vector
+        if(mode == 0){vect[vect < 0] <- 0; vect <- invdiff(vect, model$head_value, add = T)}
+        if(mode == 1){vect[vect > 0] <- 0; vect <- invdiff(vect, model$head_value, add = T)}
+        return(vect)
+      }
 
-      end_to_end_kld <- dens[[n]]$y * log(dens[[n]]$y/dens[[1]]$y)
-      end_to_end_kld <- tryCatch(round(sum(end_to_end_kld[finite_index]), 3), error = function(e) NA)
-      kld_stats <- c(avg_seq_kld, end_to_end_kld)
+      if(discrete_check){mat <- floor(mat)}
+      if(monotonic_increase_check){mat <- t(apply(mat, 1, function(x) monotonic_fixer(x, mode = 0)))}
+      if(monotonic_decrease_check){mat <- t(apply(mat, 1, function(x) monotonic_fixer(x, mode = 1)))}
+      if(all_positive_check){mat[mat < 0] <- 0}
+      if(all_negative_check){mat[mat > 0] <- 0}
+      if(class_check){mat[!(mat %in% unique(orig))] <- ((mat[!(mat %in% unique(orig))] > max(unique(orig))) * max(unique(orig))) + ((mat[!(mat %in% unique(orig))] < min(unique(orig))) * min(unique(orig)))}
 
-      return(kld_stats)
+      df <- as.data.frame(mat)
+      return(df)
+    }
+
+    recursive_diff <- function(vector, deriv)
+    {
+      vector <- unlist(vector)
+      head_value <- vector("numeric", deriv)
+      tail_value <- vector("numeric", deriv)
+      if(deriv==0){head_value = NULL; tail_value = NULL}
+      if(deriv > 0){for(i in 1:deriv){head_value[i] <- head(vector, 1); tail_value[i] <- tail(vector, 1); vector <- diff(vector)}}
+      outcome <- list(vector = vector, head_value = head_value, tail_value = tail_value)
+      return(outcome)
+    }
+
+    invdiff <- function(vector, heads, add = FALSE)
+    {
+      vector <- unlist(vector)
+      if(is.null(heads)){return(vector)}
+      for(d in length(heads):1){vector <- cumsum(c(heads[d], vector))}
+      if(add == FALSE){return(vector[-c(1:length(heads))])} else {return(vector)}
     }
 
     ###
-    upside_probability <- function(m)
-    {
-      matrix <- t(as.matrix(m))
-      n <- nrow(matrix)
-      if(n == 1){return(NA)}
-      growths <- matrix[-1,]/matrix[-n,] - 1
-      dens <- apply(growths, 1, function(x) tryCatch(density(x[is.finite(x)], from = min(x[is.finite(x)]), to = max(x[is.finite(x)])), error = function(e) NA))
-      not_na <- !is.na(dens)
-      avg_upp <- tryCatch(round(mean(map_dbl(dens[not_na], ~ sum(.x$y[.x$x>0])/sum(.x$y))), 3), error = function(e) NA)
-      end_growth <- matrix[n,]/matrix[1,] - 1
-      end_to_end_dens <- tryCatch(density(end_growth[is.finite(end_growth)], from = min(end_growth[is.finite(end_growth)]), to = max(end_growth[is.finite(end_growth)])), error = function(e) NA)
-      if(class(end_to_end_dens) == "density"){last_to_first_upp <- round(sum(end_to_end_dens$y[end_to_end_dens$x>0])/sum(end_to_end_dens$y), 3)} else {last_to_first_upp <- NA}
-      upp_stats <- c(avg_upp, last_to_first_upp)
-      return(upp_stats)
-    }
-
     ts <- as.data.frame(ts)
+    n_feat <- ncol(ts)
     n_ts <- nrow(ts)
     feat_names <- colnames(ts)
+
+    p_stats <- function(x){stats <- round(c(min = suppressWarnings(min(x, na.rm = TRUE)), quantile(x, probs = quants, na.rm = TRUE), max = suppressWarnings(max(x, na.rm = TRUE)), mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE), mode = tryCatch(suppressWarnings(mlv1(x[is.finite(x)], method = "shorth")), error = function(e) NA), kurtosis = tryCatch(suppressWarnings(kurtosis(x[is.finite(x)], na.rm = TRUE)), error = function(e) NA), skewness = tryCatch(suppressWarnings(skewness(x[is.finite(x)], na.rm = TRUE)), error = function(e) NA)), 3); return(stats)}
 
     all_positive_check <- map_lgl(ts, ~ ifelse(all(.x >= 0), TRUE, FALSE))
     all_negative_check <- map_lgl(ts, ~ ifelse(all(.x < 0), TRUE, FALSE))
@@ -97,46 +121,49 @@
     test_index <- unique(round(seq(seq_len * k, n_ts, length.out = n_windows)))
     if(length(test_index) < n_windows){message("testing on ", length(test_index), " windows")}
 
-    results <- map(test_index, ~ tryCatch(engine(ts[1:.x,, drop = FALSE], seq_len, k, method, kernel, error_measurement = TRUE, deriv, mode), error = function(e) NA))
+    results <- map(test_index, ~ tryCatch(engine(ts[1:.x,, drop = FALSE], seq_len, k, method, kernel, deriv, mode, error_measurement = TRUE, error_scale, error_benchmark), error = function(e) NA))
     not_na <- !is.na(results)
     results <- results[not_na]
     raw_errors <- map(transpose(map(results, ~ narray::split(.x$raw_error, along = 2))), ~ as.data.frame(.x))
+    former_predictions <- map(transpose(map(results, ~ narray::split(.x$prediction, along = 2))), ~ as.data.frame(.x))
+    former_actuals <- map(transpose(map(results, ~ narray::split(.x$actual, along = 2))), ~ as.data.frame(.x))
 
-    last_prediction <- engine(ts, seq_len, k, method, kernel, error_measurement = FALSE, deriv, mode)$prediction
+    pred_integration <- function(pred_seed, raw_error){as.data.frame(map2(pred_seed, raw_error, ~ .x + sample(.y, size = 1000, replace = TRUE)))}
+    former_sample_pred <- map2(former_predictions, raw_errors, ~ mapply(function(i) pred_integration(.x[, i], as.data.frame(t(.y))), i = 1:ncol(.x), SIMPLIFY = FALSE))
+    former_sample_pred <- lapply(1:n_feat, function(f) lapply(1:n_windows, function(w) doxa_filter(ts[, f], former_sample_pred[[f]][[w]])))
+    ##former_sample_pred <- map_depth(former_sample_pred, 2, ~ as.data.frame(.x))
+    names(former_sample_pred) <- feat_names
+
+    #former_sample_pred <- map2(ts, former_sample_pred, ~ mapply(function(i) doxa_filter(.x, i), i = .y, SIMPLIFY = FALSE))
+
+    pred_scores <- mapply(function(p, t) prediction_score(p, t), p = flatten(former_sample_pred), t = flatten(former_actuals), SIMPLIFY = TRUE)
+    pred_scores <- split(pred_scores, along = 1, subsets = sort(base::rep(1:n_feat, each=n_windows)))
+    avg_pred_scores <- map(pred_scores, ~ mean(.x, na.rm = TRUE))
+
+    last_prediction <- engine(ts, seq_len, k, method, kernel, deriv, mode, error_measurement = FALSE, error_scale, error_benchmark)$prediction
 
     window_metrics <- map(transpose(map(results, ~ .x$test_metrics)), ~ Reduce(rbind, .x))
-    test_metrics <- map(window_metrics, ~ apply(.x, 2, function(x) mean(x[is.finite(x)], na.rm = TRUE)))
-    names(test_metrics) <- feat_names
+    if(n_feat > 1){test_metrics <- Reduce(rbind, map(window_metrics, ~ apply(.x, 2, function(x) mean(x[is.finite(x)], na.rm = TRUE))))}
+    if(n_feat == 1){test_metrics <- t(as.data.frame(map(window_metrics, ~ apply(.x, 2, function(x) mean(x[is.finite(x)], na.rm = TRUE)))))}
+    rownames(test_metrics) <- feat_names
+    test_metrics <- as.data.frame(cbind(test_metrics, pred_score = round(unlist(avg_pred_scores), 4)))
 
     quants <- sort(unique(c((1-ci)/2, 0.25, 0.5, 0.75, ci+(1-ci)/2)))
 
     sample_pred <- map2(last_prediction, raw_errors, ~ map2_dfc(.x, narray::split(.y, along = 1), ~ .x + sample(unlist(.y), size = 1000, replace = TRUE)))
-
-    sample_pred <- map_if(sample_pred, all_positive_check, ~ {.x[.x < 0] <- 0; return(.x)})
-    sample_pred <- map_if(sample_pred, all_negative_check, ~ {.x[.x > 0] <- 0; return(.x)})
-
-    p_stats <- function(x){stats <- round(c(min = suppressWarnings(min(x, na.rm = TRUE)), quantile(x, probs = quants, na.rm = TRUE), max = suppressWarnings(max(x, na.rm = TRUE)), mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE), mode = tryCatch(suppressWarnings(mlv1(x[is.finite(x)], method = "shorth")), error = function(e) NA), kurtosis = tryCatch(suppressWarnings(kurtosis(x[is.finite(x)], na.rm = TRUE)), error = function(e) NA), skewness = tryCatch(suppressWarnings(skewness(x[is.finite(x)], na.rm = TRUE)), error = function(e) NA)), 3); return(stats)}
+    sample_pred <- map2(ts, sample_pred, ~ doxa_filter(.x, .y))
 
     prediction <- map(sample_pred, ~ as.data.frame(t(apply(.x, 2, p_stats))))
-    prediction <- map(prediction, ~ {rownames(.x) <- NULL; return(.x)})
+    iqr_to_range <- map(prediction, ~ tryCatch((.x[, "75%"] - .x[, "25%"])/(.x[, "max"] - .x[, "min"]), error = function(e) NA))
+    risk_ratio <- map(prediction, ~ tryCatch((.x[, "max"] - .x[, "50%"])/(.x[, "50%"] - .x[, "min"]), error = function(e) NA))
+    growths <- map(prediction, ~ mapply(function(m, s) rnorm(1000, m, s), m = .x[, "mean"], s = .x[, "sd"]))
+    upside_prob <- map(growths, ~ tryCatch(c(NA, colMeans(apply(.x[,-1]/.x[, - seq_len], 2, function(x) x > 1))), error = function(e) NA))
+    pvalues <- map(sample_pred, ~ as.data.frame(map(.x, ~ ecdf(.x)(.x))))
+    divergence <- map(pvalues, ~ tryCatch(c(NA, apply(.x[,-1] - .x[, - seq_len], 2, function(x) abs(max(x, na.rm = T)))), error = function(e) NA))
+    entropy <- map(sample_pred, ~ tryCatch(apply(.x, 2, entropy), error = function(e) NA))
+    prediction <- pmap(list(prediction, iqr_to_range, risk_ratio, upside_prob, divergence, entropy), ~ round(cbind(..1, iqr_to_range = ..2, risk_ratio = ..3, upside_prob = ..4, divergence = ..5, entropy = ..6), 4))
     names(prediction) <- feat_names
-
-
-    avg_iqr_to_range <- round(map_dbl(prediction, ~ mean((.x[,"75%"] - .x[,"25%"])/(.x[,"max"] - .x[,"min"]))), 3)
-    last_to_first_iqr <- round(map_dbl(prediction, ~ (.x[seq_len,"75%"] - .x[seq_len,"25%"])/(.x[1,"75%"] - .x[1,"25%"])), 3)
-
-    pred_stats <- as.data.frame(rbind(avg_iqr_to_range, last_to_first_iqr))
-    rownames(pred_stats) <- c("avg_iqr_to_range", "terminal_iqr_ratio")
-
-    kld_stats <- map(sample_pred, ~ tryCatch(sequential_kld(.x), error = function(e) c(NA, NA)))
-    kld_stats <- as.data.frame(map(kld_stats, ~.x))
-    rownames(kld_stats) <- c("avg_kl_divergence", "terminal_kl_divergence")
-
-    upp_stats <- map(sample_pred, ~ tryCatch(upside_probability(.x), error = function(e) c(NA, NA)))
-    upp_stats <- as.data.frame(map(upp_stats, ~.x))
-    rownames(upp_stats) <- c("avg_upside_prob", "terminal_upside_prob")
-
-    pred_stats <- rbind(pred_stats, kld_stats, upp_stats)
+    prediction <- map(prediction, ~ {rownames(.x) <- NULL; return(.x)})
 
     x_hist <- 1:n_ts
     x_forcat <- (n_ts + 1):(n_ts + seq_len)
@@ -151,7 +178,7 @@
 
     plot <- pmap(list(prediction, ts, feat_names), ~ ts_graph(x_hist = x_hist, y_hist = ..2, x_forcat = x_forcat, y_forcat = ..1[, 3], lower = ..1[, 1], upper = ..1[, 5], label_y = ..3))
 
-    outcome <- list(prediction = prediction, test_metrics = test_metrics, pred_stats = pred_stats, plot = plot)
+    outcome <- list(prediction = prediction, test_metrics = test_metrics, plot = plot)
 
     return(outcome)
   }

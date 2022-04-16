@@ -13,12 +13,13 @@ jenga(
   method = NULL,
   kernel = NULL,
   ci = 0.8,
-  deriv = NULL,
   n_windows = 10,
   mode = NULL,
   n_sample = 30,
   search = "random",
   dates = NULL,
+  error_scale = "naive",
+  error_benchmark = "naive",
   seed = 42
 )
 }
@@ -29,13 +30,11 @@ jenga(
 
 \item{k}{Positive integer. Number of neighbors to consider when applying kernel average. Min number is 3. Default: NULL (automatic selection).}
 
-\item{method}{Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "chebyshev", "sorensen", "gower", "soergel", "kulczynski_d", "canberra", "lorentzian", "intersection", "non-intersection", "wavehedges", "czekanowski", "motyka", "tanimoto", "ruzicka", "inner_product", "harmonic_mean", "cosine", "hassebrook", "jaccard", "dice",  "fidelity",  "bhattacharyya", "squared_chord", "squared_euclidean", "pearson", "neyman", "squared_chi", "prob_symm", "divergence", "clark", "additive_symm", "taneja", "kumar-johnson", "avg". Default: NULL (automatic selection).}
+\item{method}{Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "chebyshev", "gower", "lorentzian", "jaccard", "dice", "squared_euclidean", "divergence", "clark", "avg". Default: NULL (automatic selection).}
 
-\item{kernel}{String. DIstribution used to calculate kernel densities. Possible options are: "empirical", "norm", "cauchy", "logis", "unif", "t", "exp", "lnorm". Default: NULL (automatic selection).}
+\item{kernel}{String. Distribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "logis", "unif", "t", "lnorm". Default: NULL (automatic selection).}
 
 \item{ci}{Confidence interval. Default: 0.8}
-
-\item{deriv}{Integer vector. Number of differentiation operations to perform for each original time feature. 0 = no change; 1: one diff; 2: two diff.}
 
 \item{n_windows}{Positive integer. Number of validation tests to measure/sample error. Default: 10.}
 
@@ -47,6 +46,10 @@ jenga(
 
 \item{dates}{Date. Vector with dates for time features.}
 
+\item{error_scale}{String. Scale for the scaled error metrics. Two options: "naive" (average of naive one-step absolute error for the historical series) or "deviation" (standard error of the historical series). Default: "naive".}
+
+\item{error_benchmark}{String. Benchmark for the relative error metrics. Two options: "naive" (sequential extension of last value) or "average" (mean value of true sequence). Default: "naive".}
+
 \item{seed}{Positive integer. Random seed. Default: 42.}
 }
 \value{
@@ -56,9 +59,8 @@ This function returns a list including:
 \item history: a table with the sampled models, hyper-parameters, validation errors, weighted average rank
 \item best: results for the best model in term of weighted average rank, including:
 \itemize{
-\item errors: training and testing errors for one-step and sequence for each ts feature (rmse, mae, mdae, mpe, mape, smape)
-\item predictions: min, max, q25, q50, q75, quantiles at selected ci, mean, sd for each ts feature
-\item pred_stats: for each predicted time feature, IQR to range, Kullback-Leibler Divergence (compared to previous point in time), upside probability (compared to previous point in time), both averaged across all points in time and compared between the terminal and the first point in the prediction sequence.
+\item errors: training and testing errors for one-step and sequence for each ts feature (me, mae, mse, rmsse, mpe, mape, rmae, rrmse, rame, mase, smse, sce, gmrae, pred_score)
+\item predictions: min, max, q25, q50, q75, quantiles at selected ci, mean, sd, mode, skewness, kurtosis, IQR to range, risk ratio, upside probability, divergence and entropy for each point fo predicted sequences
 }
 \item time_log
 }
@@ -67,8 +69,8 @@ This function returns a list including:
 Automatic projections of time features using KNN
 }
 \examples{
-jenga(covid_in_europe[, c(2, 3)], n_sample = 3)
-jenga(covid_in_europe[, c(4, 5)], n_sample = 3)
+jenga(covid_in_europe[, c(2, 3)], n_sample = 1)
+jenga(covid_in_europe[, c(4, 5)], n_sample = 1)
 
 }
 \seealso{
