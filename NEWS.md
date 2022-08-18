@@ -16,3 +16,8 @@
 * streamlined code and processing
 * matrix distance calculation: improved performance shifting from philentropy to Rfast
 * other minutiae
+
+# jenga 1.3.0
+
+* Rationalization and streamlining
+* Now you can deal also with categorical variables

@@ -7,8 +7,9 @@
 \title{jenga: automatic projections of time features using KNN}
 \usage{
 jenga(
-  ts,
+  df,
   seq_len = NULL,
+  smoother = FALSE,
   k = NULL,
   method = NULL,
   kernel = NULL,
@@ -24,15 +25,17 @@ jenga(
 )
 }
 \arguments{
-\item{ts}{A data frame with time features on columns}
+\item{df}{A data frame with time features on columns (numerical or categorical features, but not both).}
 
 \item{seq_len}{Positive integer. Time-step number of the projected sequence}
 
+\item{smoother}{Logical. Perform optimal smoothing using standard loess (only for numerical features). Default: FALSE}
+
 \item{k}{Positive integer. Number of neighbors to consider when applying kernel average. Min number is 3. Default: NULL (automatic selection).}
 
-\item{method}{Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "canberra1", "minimum", "maximum", "minkowski", "bhattacharyya", "kullback_leibler", "jensen_shannon". Default: NULL (automatic selection).}
+\item{method}{Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "minkowski". Default: NULL (automatic selection).}
 
-\item{kernel}{String. Distribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "logis", "unif", "t". Default: NULL (automatic selection).}
+\item{kernel}{String. Distribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "unif", "t". Default: NULL (automatic selection).}
 
 \item{ci}{Confidence interval. Default: 0.8}
 
@@ -55,13 +58,12 @@ jenga(
 \value{
 This function returns a list including:
 \itemize{
-\item exploration: list of all not-null models, complete with predictions, test metrics, prediction stats and plot
-\item history: a table with the sampled models, hyper-parameters, validation errors, weighted average rank
-\item best_model: results for the best model in term of weighted average rank, including:
+\item exploration: list of all models, complete with predictions, test metrics, prediction stats and plot
+\item history: a table with the sampled models, hyper-parameters, validation errors
+\item best_model: results for the best model, including:
 \itemize{
-\item predictions: min, max, q25, q50, q75, quantiles at selected ci, mean, sd, mode, skewness, kurtosis, IQR to range, risk ratio, upside probability and divergence for each point fo predicted sequences
-\item testing_errors: training and testing errors for one-step and sequence for each ts feature (me, mae, mse, rmsse, mpe, mape, rmae, rrmse, rame, mase, smse, sce, gmrae)
-\item pred_scores: a measure of prediction interval fit for each point in predicted sequence (value range from 0, out of boundaries, to 1, close to the median)
+\item predictions: min, max, q25, q50, q75, quantiles at selected ci, and different statics for numerical and categorical variables
+\item testing_errors: training and testing errors for one-step and sequence for each ts feature (different measures for numerical and categorical variables)
 }
 \item time_log
 }
