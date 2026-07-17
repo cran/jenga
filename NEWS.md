@@ -1,3 +1,16 @@
+# jenga 2.0.0
+
+* Added approximate nearest-neighbor search via custom projection candidates.
+* Added optional torch/CUDA distance acceleration with automatic CPU fallback.
+* Added probabilistic forecast distributions through configurable simulation draws.
+* Added split-conformal prediction intervals calibrated on validation windows.
+* Added multiscale sequence representations for neighbor matching.
+* Replaced philentropy binary-distance calls with custom vectorized distance metrics and removed the dependency.
+* Replaced utility dependencies for iteration, dummy encoding, imputation, smoothing, timing, descriptive moments, entropy, numeric error metrics, and KNN distances with local implementations.
+* Expanded distance methods and kernels with additional dependency-free implementations.
+* Added sign-respecting filtering on final reconstructed draws before forecast quantiles are computed.
+* Enforced historical sign bounds after conformal calibration and in forecast plots.
+
 # jenga 1.0.0
 
 * Added a `NEWS.md` file to track changes to the package.

@@ -2,9 +2,9 @@
 % Please edit documentation in R/jenga.R, R/main.R
 \docType{package}
 \name{jenga}
-\alias{jenga}
 \alias{jenga-package}
-\title{jenga: automatic projections of time features using KNN}
+\alias{jenga}
+\title{jenga: automatic projections of time features using modern KNN}
 \usage{
 jenga(
   df,
@@ -21,7 +21,13 @@ jenga(
   dates = NULL,
   error_scale = "naive",
   error_benchmark = "naive",
-  seed = 42
+  seed = 42,
+  ann = "auto",
+  gpu = "auto",
+  probabilistic = TRUE,
+  conformal = TRUE,
+  multiscale = c(1, 2, 4),
+  n_draws = 1000
 )
 }
 \arguments{
@@ -33,9 +39,9 @@ jenga(
 
 \item{k}{Positive integer. Number of neighbors to consider when applying kernel average. Min number is 3. Default: NULL (automatic selection).}
 
-\item{method}{Positive integer. Distance method for calculating neighbors. Possibile options are: "euclidean", "manhattan", "minkowski". Default: NULL (automatic selection).}
+\item{method}{String. Distance method for calculating neighbors. Possible options are: "euclidean", "manhattan", "minkowski", "chebyshev", "canberra", "clark", "sorensen", "lorentzian", "cosine", "correlation", and "hamming". Default: NULL (automatic selection).}
 
-\item{kernel}{String. Distribution used to calculate kernel densities. Possible options are: "norm", "cauchy", "unif", "t". Default: NULL (automatic selection).}
+\item{kernel}{String. Kernel used to calculate neighbor weights. Possible options are: "norm", "cauchy", "logis", "unif", "t", "laplace", "epanechnikov", "triangular", "biweight", "triweight", and "cosine". Default: NULL (automatic selection).}
 
 \item{ci}{Confidence interval. Default: 0.8}
 
@@ -54,6 +60,18 @@ jenga(
 \item{error_benchmark}{String. Benchmark for the relative error metrics. Two options: "naive" (sequential extension of last value) or "average" (mean value of true sequence). Default: "naive".}
 
 \item{seed}{Positive integer. Random seed. Default: 42.}
+
+\item{ann}{String. Approximate nearest-neighbor backend. Options are: "auto", "exact", and "projection". Default: "auto".}
+
+\item{gpu}{String. Acceleration policy for distance calculations. Options are: "auto", "off", and "torch". Default: "auto".}
+
+\item{probabilistic}{Logical. Return simulated forecast distributions and probabilistic summaries. Default: TRUE.}
+
+\item{conformal}{Logical. Add split-conformal forecast intervals calibrated on validation windows. Default: TRUE.}
+
+\item{multiscale}{Positive integer vector. Sequence aggregation scales used in the neighbor representation. Default: c(1, 2, 4).}
+
+\item{n_draws}{Positive integer. Number of simulated draws for probabilistic forecasts. Default: 1000.}
 }
 \value{
 This function returns a list including:
@@ -65,17 +83,19 @@ This function returns a list including:
 \item predictions: min, max, q25, q50, q75, quantiles at selected ci, and different statics for numerical and categorical variables
 \item testing_errors: training and testing errors for one-step and sequence for each ts feature (different measures for numerical and categorical variables)
 }
+\item distribution: simulated forecast draws for each feature when probabilistic = TRUE
+\item settings: v2 execution settings for ANN, GPU, conformal, probabilistic and multiscale options
 \item time_log
 }
 }
 \description{
-Automatic projections of time features using KNN
+Automatic projections of time features using approximate nearest neighbors,
+optional GPU acceleration, probabilistic forecasts, conformal intervals, and
+multiscale sequence representations.
 }
 \examples{
 jenga(covid_in_europe[, c(2, 3)], n_sample = 1)
 jenga(covid_in_europe[, c(4, 5)], n_sample = 1)
-
-
 }
 \seealso{
 Useful links:
